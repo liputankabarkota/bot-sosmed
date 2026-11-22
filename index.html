@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generator Poster Berita — Liputan KabarKota</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --accent: #eab308;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      background: #0f172a;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header .badge {
+      background: var(--accent);
+      color: #0f172a;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 16px;
+      display: grid;
+      grid-template-columns: 1fr 440px;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    }
+    .panel h2 {
+      margin: 0 0 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+    .field { margin-bottom: 16px; }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+    input[type="text"], input[type="url"], select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      background: #fff;
+      color: var(--text);
+    }
+    textarea { resize: vertical; min-height: 76px; }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .row > * { flex: 1; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-dark { background: #0f172a; color: #fff; }
+    .btn-dark:hover { background: #1e293b; }
+    .btn-outline {
+      background: #fff;
+      color: var(--text);
+      border: 1px solid #cbd5e1;
+    }
+    .btn-outline:hover { background: #f8fafc; }
+    .btn-sm { padding: 7px 12px; font-size: 0.8rem; }
+    .hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 5px;
+    }
+    .status {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .status.info { display: block; background: #e0f2fe; color: #075985; }
+    .status.warn { display: block; background: #fef3c7; color: #92400e; }
+    .status.ok { display: block; background: #dcfce7; color: #166534; }
+    .preview-wrap {
+      position: sticky;
+      top: 20px;
+      text-align: center;
+    }
+    canvas {
+      width: 100%;
+      max-width: 400px;
+      height: auto;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+      cursor: grab;
+      background: #1e293b;
+      touch-action: none;
+    }
+    canvas:active { cursor: grabbing; }
+    .download-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .range-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .range-wrap input[type="range"] { flex: 1; }
+    .range-val {
+      min-width: 46px;
+      text-align: right;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #475569;
+    }
+    details {
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #f8fafc;
+    }
+    summary {
+      font-weight: 700;
+      font-size: 0.88rem;
+      cursor: pointer;
+      color: #0f172a;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.76rem;
+      line-height: 1.45;
+      margin: 10px 0 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Liputan KabarKota <span class="badge">Auto Poster</span></h1>
+    <span style="font-size:0.82rem;color:#94a3b8;">Ukuran Output: 941 × 1238 px</span>
+  </header>
+
+  <div class="container">
+    <div class="panel">
+      <h2>1. Ambil Data Berita</h2>
+      <div id="statusBox" class="status"></div>
+
+      <div class="field">
+        <label for="blogDomain">Masukkan Link Artikel atau Alamat Website</label>
+        <div class="row">
+          <input type="text" id="blogDomain" value="https://www.liputankabarkota.com" placeholder="Tempel link artikel atau https://www.liputankabarkota.com" />
+          <button type="button" class="btn btn-primary" id="btnFetchFeed" style="flex:0 0 auto;">Ambil Berita</button>
+        </div>
+        <p class="hint">Bisa diisi link artikel langsung (contoh: <code>.../2026/11/judul.html</code>) atau domain blog untuk memuat 15 berita terbaru.</p>
+      </div>
+
+      <div class="field" id="postSelectWrap" style="display:none;">
+        <label for="postSelect">Pilih Artikel Terbaru</label>
+        <select id="postSelect"></select>
+      </div>
+
+      <h2>2. Isi &amp; Penyesuaian Poster</h2>
+
+      <div class="field">
+        <label for="titleInput">Judul Berita</label>
+        <textarea id="titleInput" placeholder="Ketik atau pilih judul berita...">Edy Marwoto Ajak Masyarakat Hadiri Gema Tosan Aji Jepara, Mengangkat Sejarah Ratu Kalinyamat</textarea>
+      </div>
+
+      <div class="field">
+        <label for="photoUrlInput">URL Foto Berita (otomatis atau tempel link)</label>
+        <div class="row">
+          <input type="url" id="photoUrlInput" placeholder="https://blogger.googleusercontent.com/..." />
+          <button type="button" class="btn btn-outline" id="btnLoadPhotoUrl" style="flex:0 0 auto;">Muat Foto</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="photoFileInput">Atau Upload Foto dari HP / Laptop</label>
+        <input type="file" id="photoFileInput" accept="image/*" />
+      </div>
+
+      <div class="field" id="templateFallbackWrap" style="display:none;">
+        <label for="templateFileInput">Muat File <code>template.png</code> (jika dibuka offline)</label>
+        <input type="file" id="templateFileInput" accept="image/png" />
+        <p class="hint">Saat diunggah ke GitHub Pages, <code>template.png</code> akan dimuat otomatis.</p>
+      </div>
+
+      <div class="field">
+        <label>Zoom &amp; Posisi Foto <span style="font-weight:400;color:#64748b;">(bisa geser foto langsung di preview)</span></label>
+        <div class="range-wrap">
+          <input type="range" id="zoomRange" min="50" max="250" value="100" />
+          <span class="range-val" id="zoomVal">100%</span>
+          <button type="button" class="btn btn-outline btn-sm" id="btnResetPos">Reset</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Ukuran Maksimal Font Judul</label>
+        <div class="range-wrap">
+          <input type="range" id="fontSizeRange" min="26" max="54" value="40" />
+          <span class="range-val" id="fontSizeVal">40 px</span>
+        </div>
+      </div>
+
+      <details>
+        <summary>Cara Pasang Tombol di Template Blogger</summary>
+        <p class="hint" style="margin-top:8px;">
+          Tempelkan kode berikut di template HTML Blogger (di dalam loop postingan <code>&lt;b:includable id='post' ...&gt;</code>), lalu ganti <code>URL_GITHUB_PAGES_ANDA</code> dengan alamat GitHub Pages Anda:
+        </p>
+        <pre>&lt;a expr:href='&amp;quot;https://URL_GITHUB_PAGES_ANDA/?judul=&amp;quot; + data:post.title + &amp;quot;&amp;amp;foto=&amp;quot; + data:post.firstImageUrl'
+   target='_blank'
+   style='display:inline-block;padding:8px 14px;background:#0284c7;color:#fff;border-radius:6px;text-decoration:none;font-weight:bold;'&gt;
+  Buat Poster Berita
+&lt;/a&gt;</pre>
+      </details>
+    </div>
+
+    <div class="panel preview-wrap">
+      <h2>Preview Poster</h2>
+      <canvas id="posterCanvas" width="941" height="1238"></canvas>
+      <div class="download-actions">
+        <button type="button" class="btn btn-primary" id="btnDownloadJpg">Download JPG</button>
+        <button type="button" class="btn btn-dark" id="btnDownloadPng">Download PNG</button>
+      </div>
+      <p class="hint">Geser gambar pada preview untuk mengatur posisi objek/wajah.</p>
+    </div>
+  </div>
+
+  <script>
+    const CANVAS_W = 941;
+    const CANVAS_H = 1238;
+    const PHOTO_AREA = { x: 0, y: 150, w: 941, h: 660 };
+    const TITLE_BOX = { cx: 466, cy: 860, maxW: 740, maxH: 112 };
+
+    const canvas = document.getElementById('posterCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusBox = document.getElementById('statusBox');
+
+    const titleInput = document.getElementById('titleInput');
+    const photoUrlInput = document.getElementById('photoUrlInput');
+    const zoomRange = document.getElementById('zoomRange');
+    const zoomVal = document.getElementById('zoomVal');
+    const fontSizeRange = document.getElementById('fontSizeRange');
+    const fontSizeVal = document.getElementById('fontSizeVal');
+    const postSelectWrap = document.getElementById('postSelectWrap');
+    const postSelect = document.getElementById('postSelect');
+
+    let templateImg = null;
+    let photoImg = null;
+    let photoOffsetX = 0;
+    let photoOffsetY = 0;
+    let photoZoom = 1;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    function showStatus(msg, type = 'info') {
+      statusBox.className = 'status ' + type;
+      statusBox.textContent = msg;
+    }
+
+    function loadTemplateFromDefault() {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        templateImg = img;
+        document.getElementById('templateFallbackWrap').style.display = 'none';
+        renderPoster();
+      };
+      img.onerror = () => {
+        document.getElementById('templateFallbackWrap').style.display = 'block';
+        showStatus('File template.png belum termuat otomatis (jika dibuka offline/preview, pilih template.png secara manual di bawah).', 'warn');
+        renderPoster();
+      };
+      img.src = './template.png';
+    }
+
+    function loadPhotoUrl(url, useProxy = false) {
+      if (!url) return;
+      const targetUrl = useProxy
+        ? 'https://wsrv.nl/?url=' + encodeURIComponent(url) + '&output=jpg'
+        : url;
+
+      showStatus('Memuat foto...', 'info');
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        photoImg = img;
+        photoOffsetX = 0;
+        photoOffsetY = 0;
+        photoZoom = 1;
+        zoomRange.value = 100;
+        zoomVal.textContent = '100%';
+        showStatus('Foto berhasil dimuat.', 'ok');
+        renderPoster();
+      };
+      img.onerror = () => {
+        if (!useProxy) {
+          loadPhotoUrl(url, true);
+        } else {
+          showStatus('Gagal memuat foto dari URL karena pembatasan server. Silakan upload foto secara manual.', 'warn');
+        }
+      };
+      img.src = targetUrl;
+    }
+
+    function wrapTextLines(context, text, maxWidth) {
+      const paragraphs = text.trim().split(/\n+/);
+      const lines = [];
+      for (const p of paragraphs) {
+        const words = p.trim().split(/\s+/);
+        let current = '';
+        for (const w of words) {
+          const test = current ? current + ' ' + w : w;
+          if (context.measureText(test).width <= maxWidth) {
+            current = test;
+          } else {
+            if (current) lines.push(current);
+            current = w;
+          }
+        }
+        if (current) lines.push(current);
+      }
+      return lines;
+    }
+
+    function drawTitle() {
+      const text = titleInput.value.trim();
+      if (!text) return;
+
+      let fontSize = parseInt(fontSizeRange.value, 10) || 40;
+      let lines = [];
+      let lineHeight = 0;
+
+      while (fontSize >= 20) {
+        ctx.font = `800 ${fontSize}px "Roboto Condensed", "Arial Narrow", Arial, sans-serif`;
+        lines = wrapTextLines(ctx, text, TITLE_BOX.maxW);
+        lineHeight = fontSize * 1.18;
+        if (lines.length * lineHeight <= TITLE_BOX.maxH) break;
+        fontSize -= 2;
+      }
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#0f172a';
+
+      const totalH = lines.length * lineHeight;
+      const startY = TITLE_BOX.cy - totalH / 2 + lineHeight / 2;
+
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, TITLE_BOX.cx, startY + idx * lineHeight);
+      });
+    }
+
+    function renderPoster() {
+      ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+      if (photoImg) {
+        const baseScale = Math.max(PHOTO_AREA.w / photoImg.width, PHOTO_AREA.h / photoImg.height);
+        const scale = baseScale * photoZoom;
+        const drawW = photoImg.width * scale;
+        const drawH = photoImg.height * scale;
+        const drawX = PHOTO_AREA.x + (PHOTO_AREA.w - drawW) / 2 + photoOffsetX;
+        const drawY = PHOTO_AREA.y + (PHOTO_AREA.h - drawH) / 2 + photoOffsetY;
+        ctx.drawImage(photoImg, drawX, drawY, drawW, drawH);
+      }
+
+      if (templateImg) {
+        ctx.drawImage(templateImg, 0, 0, CANVAS_W, CANVAS_H);
+      }
+
+      drawTitle();
+    }
+
+    function extractImageFromEntry(entry) {
+      if (entry.media$thumbnail && entry.media$thumbnail.url) {
+        return entry.media$thumbnail.url.replace(/\/s\d+(-c)?\//, '/s1600/');
+      }
+      const html = (entry.content && entry.content.$t) || (entry.summary && entry.summary.$t) || '';
+      const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+      return match ? match[1] : '';
+    }
+
+    function populateFeedEntries(entries, targetArticleUrl = '') {
+      postSelect.innerHTML = '';
+      let matchedIndex = 0;
+      const normTarget = targetArticleUrl.replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '');
+
+      entries.forEach((entry, i) => {
+        const title = entry.title ? entry.title.$t : 'Tanpa Judul';
+        const imgUrl = extractImageFromEntry(entry);
+        const altLink = ((entry.link || []).find(l => l.rel === 'alternate') || {}).href || '';
+
+        if (normTarget && altLink.replace(/^https?:\/\/(www\.)?/, '').replace(/\/+$/, '') === normTarget) {
+          matchedIndex = i;
+        }
+
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = title;
+        opt.dataset.title = title;
+        opt.dataset.img = imgUrl;
+        postSelect.appendChild(opt);
+      });
+
+      postSelect.selectedIndex = matchedIndex;
+      postSelectWrap.style.display = 'block';
+      applySelectedPost();
+      showStatus(`Berhasil memuat ${entries.length} artikel dari Blogger.`, 'ok');
+    }
+
+    async function fetchArticleMetaDirectly(articleUrl) {
+      showStatus('Mengambil judul & foto dari link artikel...', 'info');
+      try {
+        const res = await fetch('https://api.microlink.io/?url=' + encodeURIComponent(articleUrl));
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          if (json.data.title) {
+            titleInput.value = json.data.title.replace(/\s*[-|]\s*Liputan\s*KabarKota.*$/i, '').trim();
+          }
+          if (json.data.image && json.data.image.url) {
+            photoUrlInput.value = json.data.image.url;
+            loadPhotoUrl(json.data.image.url);
+            return true;
+          }
+        }
+      } catch (e) { /* fallback below */ }
+
+      try {
+        const res2 = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(articleUrl));
+        const html = await res2.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const ogTitle = doc.querySelector('meta[property="og:title"]')?.content || doc.title;
+        const ogImage = doc.querySelector('meta[property="og:image"]')?.content;
+        if (ogTitle) titleInput.value = ogTitle.trim();
+        if (ogImage) {
+          photoUrlInput.value = ogImage;
+          loadPhotoUrl(ogImage);
+          return true;
+        }
+      } catch (e) { /* handled by caller */ }
+      return false;
+    }
+
+    async function fetchBloggerFeed() {
+      let rawInput = document.getElementById('blogDomain').value.trim();
+      if (!rawInput) return;
+      if (!/^https?:\/\//i.test(rawInput)) rawInput = 'https://' + rawInput;
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(rawInput);
+      } catch {
+        showStatus('Format URL tidak valid.', 'warn');
+        return;
+      }
+
+      const origin = parsedUrl.origin;
+      const isSpecificArticle = parsedUrl.pathname && parsedUrl.pathname !== '/' && parsedUrl.pathname.length > 2;
+
+      if (isSpecificArticle) {
+        const ok = await fetchArticleMetaDirectly(rawInput);
+        if (ok) return;
+      }
+
+      showStatus('Mengambil daftar berita terbaru dari ' + origin + '...', 'info');
+
+      // 1. Coba via fetch + AllOrigins (aman di dalam iframe/sandbox maupun GitHub Pages)
+      const feedJsonUrl = `${origin}/feeds/posts/default?alt=json&max-results=15`;
+      try {
+        const res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(feedJsonUrl));
+        if (res.ok) {
+          const data = await res.json();
+          const entries = (data.feed && data.feed.entry) || [];
+          if (entries.length) {
+            populateFeedEntries(entries, isSpecificArticle ? rawInput : '');
+            return;
+          }
+        }
+      } catch (e) { /* lanjut ke JSONP */ }
+
+      // 2. Fallback JSONP langsung ke Blogger
+      const cbName = 'bloggerFeedCb_' + Date.now();
+      window[cbName] = function (data) {
+        delete window[cbName];
+        const entries = (data.feed && data.feed.entry) || [];
+        if (!entries.length) {
+          showStatus('Tidak ditemukan artikel pada feed tersebut.', 'warn');
+          return;
+        }
+        populateFeedEntries(entries, isSpecificArticle ? rawInput : '');
+      };
+
+      const script = document.createElement('script');
+      script.src = `${origin}/feeds/posts/default?alt=json-in-script&max-results=15&callback=${cbName}`;
+      script.onerror = () => {
+        showStatus('Tidak bisa menghubungi feed dari halaman preview ini (kemungkinan diblokir sandbox/jaringan). Jalankan file ini di GitHub Pages atau isi Judul & Foto di bawah.', 'warn');
+      };
+      document.body.appendChild(script);
+    }
+
+    function applySelectedPost() {
+      const opt = postSelect.options[postSelect.selectedIndex];
+      if (!opt) return;
+      titleInput.value = opt.dataset.title || '';
+      if (opt.dataset.img) {
+        photoUrlInput.value = opt.dataset.img;
+        loadPhotoUrl(opt.dataset.img);
+      } else {
+        renderPoster();
+      }
+    }
+
+    document.getElementById('btnFetchFeed').addEventListener('click', fetchBloggerFeed);
+    postSelect.addEventListener('change', applySelectedPost);
+    titleInput.addEventListener('input', renderPoster);
+    document.getElementById('btnLoadPhotoUrl').addEventListener('click', () => loadPhotoUrl(photoUrlInput.value.trim()));
+
+    document.getElementById('photoFileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          photoImg = img;
+          photoOffsetX = 0;
+          photoOffsetY = 0;
+          renderPoster();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('templateFileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          templateImg = img;
+          showStatus('template.png berhasil dimuat.', 'ok');
+          renderPoster();
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    zoomRange.addEventListener('input', () => {
+      photoZoom = parseInt(zoomRange.value, 10) / 100;
+      zoomVal.textContent = zoomRange.value + '%';
+      renderPoster();
+    });
+
+    fontSizeRange.addEventListener('input', () => {
+      fontSizeVal.textContent = fontSizeRange.value + ' px';
+      renderPoster();
+    });
+
+    document.getElementById('btnResetPos').addEventListener('click', () => {
+      photoOffsetX = 0;
+      photoOffsetY = 0;
+      photoZoom = 1;
+      zoomRange.value = 100;
+      zoomVal.textContent = '100%';
+      renderPoster();
+    });
+
+    function startDrag(clientX, clientY) {
+      isDragging = true;
+      dragStartX = clientX;
+      dragStartY = clientY;
+    }
+    function moveDrag(clientX, clientY) {
+      if (!isDragging || !photoImg) return;
+      const rect = canvas.getBoundingClientRect();
+      const ratio = CANVAS_W / rect.width;
+      photoOffsetX += (clientX - dragStartX) * ratio;
+      photoOffsetY += (clientY - dragStartY) * ratio;
+      dragStartX = clientX;
+      dragStartY = clientY;
+      renderPoster();
+    }
+    canvas.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY));
+    window.addEventListener('mousemove', (e) => moveDrag(e.clientX, e.clientY));
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    canvas.addEventListener('touchmove', (e) => {
+      if (isDragging && e.touches.length === 1) {
+        e.preventDefault();
+        moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: false });
+    window.addEventListener('touchend', () => { isDragging = false; });
+
+    function downloadPoster(mime, ext) {
+      try {
+        const link = document.createElement('a');
+        const slug = (titleInput.value.trim() || 'poster-kabarkota')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 50);
+        link.download = `${slug}.${ext}`;
+        link.href = canvas.toDataURL(mime, 0.95);
+        link.click();
+      } catch (err) {
+        showStatus('Gagal mengunduh karena foto diblokir CORS. Silakan upload foto manual atau pastikan template.png dimuat lewat GitHub Pages.', 'warn');
+      }
+    }
+
+    document.getElementById('btnDownloadJpg').addEventListener('click', () => downloadPoster('image/jpeg', 'jpg'));
+    document.getElementById('btnDownloadPng').addEventListener('click', () => downloadPoster('image/png', 'png'));
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadTemplateFromDefault();
+      const params = new URLSearchParams(window.location.search);
+      const judulParam = params.get('judul');
+      const fotoParam = params.get('foto');
+      if (judulParam) titleInput.value = judulParam;
+      if (fotoParam) {
+        photoUrlInput.value = fotoParam;
+        loadPhotoUrl(fotoParam);
+      }
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(renderPoster);
+      }
+    });
+  </script>
+</body>
+</html>
