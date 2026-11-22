@@ -38,6 +38,7 @@ jobs:
           ARTICLE_URL: ${{ github.event.inputs.article_url }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python generate_posters.py
 
       - name: Simpan poster baru ke repositori GitHub
