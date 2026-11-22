@@ -2,18 +2,17 @@
 """
 Auto Poster Generator untuk Liputan KabarKota (Blogger -> GitHub Actions -> Telegram/Gallery)
 Otomatis mengambil artikel terbaru dari feed Blogger, menggabungkan foto + template.png + judul,
-menyimpan ke folder posters/, dan opsional mengirim langsung ke Telegram.
+menyimpan ke folder posters/, dan mengirim gambar + judul + ringkasan berita + link ke Telegram.
 """
 
+import html
 import json
 import os
 import re
 import sys
-import html
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlparse
 
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -70,6 +69,32 @@ def slugify(text: str, max_len: int = 55) -> str:
     return (s or "berita")[:max_len].strip("-")
 
 
+def clean_summary(raw_text: str, max_chars: int = 380) -> str:
+    if not raw_text:
+        return ""
+    # Hapus tag HTML dan rapikan spasi
+    text = re.sub(r"<script[^>]*>.*?</script>", " ", raw_text, flags=re.I | re.S)
+    text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if len(text) <= max_chars:
+        return text
+
+    # Potong rapi di akhir kalimat jika memungkinkan
+    snippet = text[:max_chars]
+    last_dot = snippet.rfind(". ")
+    if last_dot >= 160:
+        return snippet[: last_dot + 1].strip()
+
+    # Jika tidak ada titik yang pas, potong di batas kata
+    last_space = snippet.rfind(" ")
+    if last_space > 0:
+        snippet = snippet[:last_space]
+    return snippet.rstrip(" ,;:-") + "..."
+
+
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
     words = text.strip().split()
     lines, current = [], ""
@@ -93,19 +118,16 @@ def render_poster(photo_img: Image.Image, title: str, output_path: Path, templat
 
     canvas = Image.new("RGBA", (CANVAS_W, CANVAS_H), (20, 30, 48, 255))
 
-    # Smart-crop foto agar memenuhi area transparan dengan fokus agak ke atas (0.30) supaya wajah tidak terpotong
     px, py, pw, ph = PHOTO_BOX
     photo_rgb = ImageOps.exif_transpose(photo_img).convert("RGBA")
     cropped = ImageOps.fit(photo_rgb, (pw, ph), method=Image.Resampling.LANCZOS, centering=(0.5, 0.30))
     canvas.paste(cropped, (px, py))
 
-    # Tempel bingkai transparan PNG dari PSD
     template = Image.open(template_path).convert("RGBA")
     if template.size != (CANVAS_W, CANVAS_H):
         template = template.resize((CANVAS_W, CANVAS_H), Image.Resampling.LANCZOS)
     canvas.alpha_composite(template)
 
-    # Tulis judul di dalam kotak kuning dengan auto-wrap dan auto-shrink
     draw = ImageDraw.Draw(canvas)
     font_path = find_font_path()
     clean_title = re.sub(r"\s+", " ", html.unescape(title)).strip()
@@ -144,7 +166,6 @@ def render_poster(photo_img: Image.Image, title: str, output_path: Path, templat
 def upgrade_blogger_image_url(url: str) -> str:
     if not url:
         return ""
-    # Ubah thumbnail kecil Blogger (/s72-c/, /w320-h200/, dll.) ke resolusi penuh /s1600/
     url = re.sub(r"/s\d+(-[a-z0-9-]+)?/", "/s1600/", url)
     url = re.sub(r"/w\d+-h\d+(-[a-z0-9-]+)?/", "/s1600/", url)
     return url
@@ -155,25 +176,29 @@ def fetch_article_from_url(article_url: str) -> dict | None:
     resp.raise_for_status()
     page = resp.text
 
-    def get_meta(prop: str) -> str:
-        m = re.search(rf'<meta[^>]+property=["\']{prop}["\'][^>]+content=["\']([^"\']+)["\']', page, re.I)
+    def get_meta(attr: str, val: str) -> str:
+        m = re.search(rf'<meta[^>]+{attr}=["\']{val}["\'][^>]+content=["\']([^"\']+)["\']', page, re.I)
         if not m:
-            m = re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']{prop}["\']', page, re.I)
+            m = re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+{attr}=["\']{val}["\']', page, re.I)
         return html.unescape(m.group(1)).strip() if m else ""
 
-    title = get_meta("og:title")
+    title = get_meta("property", "og:title")
     if not title:
         m = re.search(r"<title>(.*?)</title>", page, re.I | re.S)
         title = html.unescape(m.group(1)).strip() if m else ""
     title = re.sub(r"\s*[-|]\s*Liputan\s*KabarKota.*$", "", title, flags=re.I).strip()
 
-    img_url = upgrade_blogger_image_url(get_meta("og:image"))
+    raw_desc = get_meta("property", "og:description") or get_meta("name", "description")
+    summary = clean_summary(raw_desc)
+
+    img_url = upgrade_blogger_image_url(get_meta("property", "og:image"))
     if not title or not img_url:
         return None
 
     return {
         "id": article_url,
         "title": title,
+        "summary": summary,
         "link": article_url,
         "image": img_url,
         "published": datetime.now().strftime("%Y-%m-%d"),
@@ -198,6 +223,9 @@ def fetch_blogger_posts(blog_url: str, max_results: int = 10) -> list[dict]:
                 link = l.get("href", "")
                 break
 
+        raw_body = entry.get("summary", {}).get("$t", "") or entry.get("content", {}).get("$t", "")
+        summary = clean_summary(raw_body)
+
         img_url = ""
         thumb = entry.get("media$thumbnail", {}).get("url", "")
         if thumb:
@@ -212,6 +240,7 @@ def fetch_blogger_posts(blog_url: str, max_results: int = 10) -> list[dict]:
             posts.append({
                 "id": post_id,
                 "title": title,
+                "summary": summary,
                 "link": link,
                 "image": img_url,
                 "published": published,
@@ -225,11 +254,25 @@ def download_image(url: str) -> Image.Image:
     return Image.open(BytesIO(resp.content))
 
 
-def send_to_telegram(image_path: Path, title: str, link: str) -> None:
+def send_to_telegram(image_path: Path, title: str, summary: str, link: str) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
+
     api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    caption = f"📰 {title}\n\n🔗 Baca selengkapnya:\n{link}"
+
+    # Susun caption: Judul + Ringkasan Berita + Baca Selengkapnya (batas Telegram 1024 karakter)
+    footer = f"\n\n🔗 Baca selengkapnya:\n{link}"
+    header = f"📰 {title}"
+    if summary:
+        max_summary_len = 1024 - len(header) - len(footer) - 2
+        if max_summary_len > 40:
+            trimmed_summary = clean_summary(summary, max_chars=max_summary_len)
+            caption = f"{header}\n\n{trimmed_summary}{footer}"
+        else:
+            caption = f"{header}{footer}"
+    else:
+        caption = f"{header}{footer}"
+
     with open(image_path, "rb") as f:
         resp = requests.post(
             api_url,
@@ -287,13 +330,14 @@ def main() -> int:
             gallery = [g for g in gallery if g.get("file") != f"posters/{filename}"]
             gallery.insert(0, {
                 "title": post["title"],
+                "summary": post.get("summary", ""),
                 "link": post["link"],
                 "published": post["published"],
                 "file": f"posters/{filename}",
             })
             gallery = gallery[:50]
 
-            send_to_telegram(out_path, post["title"], post["link"])
+            send_to_telegram(out_path, post["title"], post.get("summary", ""), post["link"])
             created_count += 1
         except Exception as exc:
             print(f"  [ERROR] Gagal memproses '{post['title']}': {exc}")
