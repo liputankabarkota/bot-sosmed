@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Auto Poster Generator untuk Liputan KabarKota (Blogger -> GitHub Actions -> Telegram/Gallery)
+Auto Poster Generator untuk Liputan KabarKota (Blogger -> GitHub Actions -> Gemini AI -> Telegram)
 Otomatis mengambil artikel terbaru dari feed Blogger, menggabungkan foto + template.png + judul,
-menyimpan ke folder posters/, dan mengirim gambar + judul + ringkasan berita + link ke Telegram.
+merangkum isi berita secara natural dengan Gemini API (opsional, dengan fallback otomatis),
+menyimpan ke folder posters/, dan mengirim ke Telegram.
 """
 
 import html
@@ -28,6 +29,8 @@ GALLERY_FILE = POSTERS_DIR / "gallery.json"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
 # Koordinat presisi sesuai Liputan KabarKota News Template sosed.psd (941 x 1238)
 CANVAS_W, CANVAS_H = 941, 1238
@@ -69,30 +72,81 @@ def slugify(text: str, max_len: int = 55) -> str:
     return (s or "berita")[:max_len].strip("-")
 
 
-def clean_summary(raw_text: str, max_chars: int = 380) -> str:
-    if not raw_text:
+def html_to_plain_text(raw_html: str) -> str:
+    if not raw_html:
         return ""
-    # Hapus tag HTML dan rapikan spasi
-    text = re.sub(r"<script[^>]*>.*?</script>", " ", raw_text, flags=re.I | re.S)
+    text = re.sub(r"<script[^>]*>.*?</script>", " ", raw_html, flags=re.I | re.S)
     text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
     text = re.sub(r"<[^>]+>", " ", text)
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def clean_summary(raw_text: str, max_chars: int = 380) -> str:
+    text = html_to_plain_text(raw_text)
+    if not text:
+        return ""
+
+    # Bersihkan awalan byline media agar lebih enak dibaca di caption medsos
+    text = re.sub(r"^LIPUTAN\s+KABAR\s*KOTA(\s+JEPARA)?\s*[–—\-:]\s*", "", text, flags=re.I).strip()
 
     if len(text) <= max_chars:
         return text
 
-    # Potong rapi di akhir kalimat jika memungkinkan
     snippet = text[:max_chars]
     last_dot = snippet.rfind(". ")
     if last_dot >= 160:
         return snippet[: last_dot + 1].strip()
 
-    # Jika tidak ada titik yang pas, potong di batas kata
     last_space = snippet.rfind(" ")
     if last_space > 0:
         snippet = snippet[:last_space]
     return snippet.rstrip(" ,;:-") + "..."
+
+
+def generate_natural_summary(title: str, full_text: str) -> str:
+    """Membuat ringkasan berita yang natural dan manusiawi menggunakan Gemini API."""
+    fallback = clean_summary(full_text, max_chars=380)
+    if not GEMINI_API_KEY or not full_text.strip():
+        return fallback
+
+    prompt = (
+        "Kamu adalah editor media sosial untuk portal berita lokal Liputan KabarKota Jepara.\n"
+        "Tugasmu: tuliskan ringkasan singkat (2 sampai 3 kalimat, maksimal 360 karakter) dari berita di bawah ini "
+        "untuk caption Telegram/Instagram/Facebook.\n"
+        "Aturan:\n"
+        "- Gunakan bahasa Indonesia yang natural, mengalir, informatif, dan enak dibaca manusia.\n"
+        "- Langsung ke inti berita; jangan menulis awalan seperti 'LIPUTAN KABAR KOTA JEPARA -', 'Ringkasan:', atau tanda kutip pembuka.\n"
+        "- Jangan mengulang judul mentah-mentah, jangan menambah fakta di luar isi berita, dan jangan pakai hashtag atau emoji.\n\n"
+        f"Judul: {title}\n"
+        f"Isi Berita:\n{full_text[:3500]}"
+    )
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 220},
+    }
+
+    try:
+        resp = requests.post(api_url, json=payload, timeout=25)
+        if resp.ok:
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                ai_text = "".join(p.get("text", "") for p in parts).strip()
+                ai_text = re.sub(r"\s+", " ", ai_text).strip(' "\'')
+                if len(ai_text) >= 40:
+                    print("  [Gemini AI] Ringkasan natural berhasil dibuat.")
+                    return ai_text
+        else:
+            print(f"  [Gemini AI] Gagal ({resp.status_code}), pakai ringkasan standar.")
+    except Exception as exc:
+        print(f"  [Gemini AI] Error ({exc}), pakai ringkasan standar.")
+
+    return fallback
 
 
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_w: int) -> list[str]:
@@ -188,8 +242,11 @@ def fetch_article_from_url(article_url: str) -> dict | None:
         title = html.unescape(m.group(1)).strip() if m else ""
     title = re.sub(r"\s*[-|]\s*Liputan\s*KabarKota.*$", "", title, flags=re.I).strip()
 
+    # Ambil isi paragraf artikel agar Gemini mendapat konteks penuh
+    paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", page, re.I | re.S)
+    body_text = " ".join(html_to_plain_text(p) for p in paragraphs if len(html_to_plain_text(p)) > 35)
     raw_desc = get_meta("property", "og:description") or get_meta("name", "description")
-    summary = clean_summary(raw_desc)
+    source_text = body_text if len(body_text) > 120 else raw_desc
 
     img_url = upgrade_blogger_image_url(get_meta("property", "og:image"))
     if not title or not img_url:
@@ -198,7 +255,7 @@ def fetch_article_from_url(article_url: str) -> dict | None:
     return {
         "id": article_url,
         "title": title,
-        "summary": summary,
+        "full_text": source_text,
         "link": article_url,
         "image": img_url,
         "published": datetime.now().strftime("%Y-%m-%d"),
@@ -223,16 +280,15 @@ def fetch_blogger_posts(blog_url: str, max_results: int = 10) -> list[dict]:
                 link = l.get("href", "")
                 break
 
-        raw_body = entry.get("summary", {}).get("$t", "") or entry.get("content", {}).get("$t", "")
-        summary = clean_summary(raw_body)
+        raw_body = entry.get("content", {}).get("$t", "") or entry.get("summary", {}).get("$t", "")
+        full_text = html_to_plain_text(raw_body)
 
         img_url = ""
         thumb = entry.get("media$thumbnail", {}).get("url", "")
         if thumb:
             img_url = upgrade_blogger_image_url(thumb)
         else:
-            body_html = entry.get("content", {}).get("$t", "") or entry.get("summary", {}).get("$t", "")
-            m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', body_html, re.I)
+            m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', raw_body, re.I)
             if m:
                 img_url = upgrade_blogger_image_url(m.group(1))
 
@@ -240,7 +296,7 @@ def fetch_blogger_posts(blog_url: str, max_results: int = 10) -> list[dict]:
             posts.append({
                 "id": post_id,
                 "title": title,
-                "summary": summary,
+                "full_text": full_text,
                 "link": link,
                 "image": img_url,
                 "published": published,
@@ -260,7 +316,6 @@ def send_to_telegram(image_path: Path, title: str, summary: str, link: str) -> N
 
     api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
 
-    # Susun caption: Judul + Ringkasan Berita + Baca Selengkapnya (batas Telegram 1024 karakter)
     footer = f"\n\n🔗 Baca selengkapnya:\n{link}"
     header = f"📰 {title}"
     if summary:
@@ -326,18 +381,20 @@ def main() -> int:
             render_poster(photo, post["title"], out_path)
             print(f"  [OK] Tersimpan: {out_path}")
 
+            summary = generate_natural_summary(post["title"], post.get("full_text", ""))
+
             processed.add(post["id"])
             gallery = [g for g in gallery if g.get("file") != f"posters/{filename}"]
             gallery.insert(0, {
                 "title": post["title"],
-                "summary": post.get("summary", ""),
+                "summary": summary,
                 "link": post["link"],
                 "published": post["published"],
                 "file": f"posters/{filename}",
             })
             gallery = gallery[:50]
 
-            send_to_telegram(out_path, post["title"], post.get("summary", ""), post["link"])
+            send_to_telegram(out_path, post["title"], summary, post["link"])
             created_count += 1
         except Exception as exc:
             print(f"  [ERROR] Gagal memproses '{post['title']}': {exc}")
