@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Auto Poster Generator untuk Liputan KabarKota (Blogger -> GitHub Actions -> Gemini AI -> Telegram)
-Otomatis mengambil artikel terbaru dari feed Blogger, menggabungkan foto + template.png + judul,
-merangkum isi berita secara natural dengan Gemini API (opsional, dengan fallback otomatis),
-menyimpan ke folder posters/, dan mengirim ke Telegram.
+Otomatis mengambil artikel terbaru dari feed Blogger, membaca isi lengkap artikel,
+membuat poster dari template.png, merangkum berita secara natural dengan Gemini AI,
+dan mengirim ke Telegram.
 """
 
 import html
@@ -88,7 +88,6 @@ def clean_summary(raw_text: str, max_chars: int = 380) -> str:
     if not text:
         return ""
 
-    # Bersihkan awalan byline media agar lebih enak dibaca di caption medsos
     text = re.sub(r"^LIPUTAN\s+KABAR\s*KOTA(\s+JEPARA)?\s*[–—\-:]\s*", "", text, flags=re.I).strip()
 
     if len(text) <= max_chars:
@@ -105,10 +104,50 @@ def clean_summary(raw_text: str, max_chars: int = 380) -> str:
     return snippet.rstrip(" ,;:-") + "..."
 
 
+def extract_meta_tag(page: str, attr: str, val: str) -> str:
+    m = re.search(rf'<meta[^>]+{attr}=["\']{val}["\'][^>]+content=["\']([^"\']+)["\']', page, re.I)
+    if not m:
+        m = re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+{attr}=["\']{val}["\']', page, re.I)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def extract_article_body_from_html(page: str) -> str:
+    paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", page, re.I | re.S)
+    clean_paras = []
+    for p in paragraphs:
+        txt = html_to_plain_text(p)
+        if len(txt) >= 40:
+            clean_paras.append(txt)
+    body_text = " ".join(clean_paras)
+    if len(body_text) >= 120:
+        return body_text
+    return extract_meta_tag(page, "property", "og:description") or extract_meta_tag(page, "name", "description")
+
+
+def fetch_article_text_fallback(article_url: str) -> str:
+    """Ambil isi artikel langsung dari halaman web jika feed Blogger tidak memuat isi penuh."""
+    if not article_url:
+        return ""
+    try:
+        resp = requests.get(article_url, headers=HEADERS, timeout=20)
+        if resp.ok:
+            return extract_article_body_from_html(resp.text)
+    except Exception as exc:
+        print(f"  [Info] Gagal ambil teks halaman ({exc})")
+    return ""
+
+
 def generate_natural_summary(title: str, full_text: str) -> str:
     """Membuat ringkasan berita yang natural dan manusiawi menggunakan Gemini API."""
     fallback = clean_summary(full_text, max_chars=380)
-    if not GEMINI_API_KEY or not full_text.strip():
+    print(f"  [Info] Panjang teks sumber: {len(full_text)} karakter")
+
+    if not full_text.strip():
+        print("  [Info] Teks artikel kosong, ringkasan dilewati.")
+        return ""
+
+    if not GEMINI_API_KEY:
+        print("  [Gemini AI] GEMINI_API_KEY belum diisi, memakai ringkasan standar.")
         return fallback
 
     prompt = (
@@ -126,7 +165,7 @@ def generate_natural_summary(title: str, full_text: str) -> str:
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 220},
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 240},
     }
 
     try:
@@ -139,12 +178,12 @@ def generate_natural_summary(title: str, full_text: str) -> str:
                 ai_text = "".join(p.get("text", "") for p in parts).strip()
                 ai_text = re.sub(r"\s+", " ", ai_text).strip(' "\'')
                 if len(ai_text) >= 40:
-                    print("  [Gemini AI] Ringkasan natural berhasil dibuat.")
+                    print(f"  [Gemini AI] Ringkasan natural berhasil dibuat ({len(ai_text)} karakter).")
                     return ai_text
         else:
-            print(f"  [Gemini AI] Gagal ({resp.status_code}), pakai ringkasan standar.")
+            print(f"  [Gemini AI] Gagal ({resp.status_code}): {resp.text[:160]}")
     except Exception as exc:
-        print(f"  [Gemini AI] Error ({exc}), pakai ringkasan standar.")
+        print(f"  [Gemini AI] Error ({exc}), memakai ringkasan standar.")
 
     return fallback
 
@@ -230,25 +269,14 @@ def fetch_article_from_url(article_url: str) -> dict | None:
     resp.raise_for_status()
     page = resp.text
 
-    def get_meta(attr: str, val: str) -> str:
-        m = re.search(rf'<meta[^>]+{attr}=["\']{val}["\'][^>]+content=["\']([^"\']+)["\']', page, re.I)
-        if not m:
-            m = re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+{attr}=["\']{val}["\']', page, re.I)
-        return html.unescape(m.group(1)).strip() if m else ""
-
-    title = get_meta("property", "og:title")
+    title = extract_meta_tag(page, "property", "og:title")
     if not title:
         m = re.search(r"<title>(.*?)</title>", page, re.I | re.S)
         title = html.unescape(m.group(1)).strip() if m else ""
     title = re.sub(r"\s*[-|]\s*Liputan\s*KabarKota.*$", "", title, flags=re.I).strip()
 
-    # Ambil isi paragraf artikel agar Gemini mendapat konteks penuh
-    paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", page, re.I | re.S)
-    body_text = " ".join(html_to_plain_text(p) for p in paragraphs if len(html_to_plain_text(p)) > 35)
-    raw_desc = get_meta("property", "og:description") or get_meta("name", "description")
-    source_text = body_text if len(body_text) > 120 else raw_desc
-
-    img_url = upgrade_blogger_image_url(get_meta("property", "og:image"))
+    source_text = extract_article_body_from_html(page)
+    img_url = upgrade_blogger_image_url(extract_meta_tag(page, "property", "og:image"))
     if not title or not img_url:
         return None
 
@@ -381,7 +409,12 @@ def main() -> int:
             render_poster(photo, post["title"], out_path)
             print(f"  [OK] Tersimpan: {out_path}")
 
-            summary = generate_natural_summary(post["title"], post.get("full_text", ""))
+            full_text = post.get("full_text", "")
+            if len(full_text) < 150 and post.get("link"):
+                print("  [Info] Feed singkat, mengambil teks lengkap langsung dari halaman artikel...")
+                full_text = fetch_article_text_fallback(post["link"]) or full_text
+
+            summary = generate_natural_summary(post["title"], full_text)
 
             processed.add(post["id"])
             gallery = [g for g in gallery if g.get("file") != f"posters/{filename}"]
