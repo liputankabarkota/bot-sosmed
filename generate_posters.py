@@ -88,7 +88,8 @@ def clean_summary(raw_text: str, max_chars: int = 380) -> str:
     if not text:
         return ""
 
-    text = re.sub(r"^LIPUTAN\s+KABAR\s*KOTA(\s+JEPARA)?\s*[–—\-:]\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"^LIPUTAN\s+KABAR\s*KOTA(\s+[A-Z]+)?\s*[–—\-:]\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\s*Sumber\s*:.*$", "", text, flags=re.I).strip()
 
     if len(text) <= max_chars:
         return text
@@ -151,12 +152,12 @@ def generate_natural_summary(title: str, full_text: str) -> str:
         return fallback
 
     prompt = (
-        "Kamu adalah editor media sosial untuk portal berita lokal Liputan KabarKota Jepara.\n"
-        "Tugasmu: tuliskan ringkasan singkat (2 sampai 3 kalimat, maksimal 360 karakter) dari berita di bawah ini "
-        "untuk caption Telegram/Instagram/Facebook.\n"
+        "Kamu adalah editor media sosial untuk portal berita Liputan KabarKota.\n"
+        "Tugasmu: sunting dan ringkas ulang isi berita di bawah ini menjadi 1 paragraf singkat yang simpel (2 sampai 3 kalimat, maksimal 360 karakter) untuk caption media sosial.\n"
         "Aturan:\n"
-        "- Gunakan bahasa Indonesia yang natural, mengalir, informatif, dan enak dibaca manusia.\n"
-        "- Langsung ke inti berita; jangan menulis awalan seperti 'LIPUTAN KABAR KOTA JEPARA -', 'Ringkasan:', atau tanda kutip pembuka.\n"
+        "- Gunakan bahasa Indonesia yang natural, manusiawi, mengalir, dan enak dibaca.\n"
+        "- Langsung ke inti berita dalam 1 paragraf utuh (tanpa poin-poin).\n"
+        "- Hapus awalan seperti 'LIPUTAN KABAR KOTA ... -', tulisan 'Sumber : ...', kata 'Ringkasan:', atau tanda kutip pembuka.\n"
         "- Jangan mengulang judul mentah-mentah, jangan menambah fakta di luar isi berita, dan jangan pakai hashtag atau emoji.\n\n"
         f"Judul: {title}\n"
         f"Isi Berita:\n{full_text[:3500]}"
@@ -345,7 +346,8 @@ def send_to_telegram(image_path: Path, title: str, summary: str, link: str) -> N
     api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
 
     footer = f"\n\n🔗 Baca selengkapnya:\n{link}"
-    header = f"📰 {title}"
+    clean_caption_title = re.sub(r"^Liputan\s+Kabar\s*Kota\s*[-–—:]\s*", "", title, flags=re.I).strip()
+    header = f"Liputan Kabar Kota - {clean_caption_title}"
     if summary:
         max_summary_len = 1024 - len(header) - len(footer) - 2
         if max_summary_len > 40:
